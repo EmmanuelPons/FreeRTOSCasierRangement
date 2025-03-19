@@ -11,6 +11,9 @@
 /* Priorities for the demo application tasks. */
 #define mainLED_TASK_PRIORITY		( tskIDLE_PRIORITY + 2 )
 
+#define BP_DEMANDE_TEST_PIN   12
+#define BP_DEMANDE_APPRO_PIN  13
+
 typedef struct {
     GPIO_TypeDef *GPIOx;  
     uint8_t num_bit;      
@@ -48,7 +51,6 @@ static void prvSetupHardware( void );
 void gestion_abort(void)
 {
 
-
 }
 
 
@@ -68,9 +70,10 @@ int main( void )
   // Les taches tournent en USER/SYSTEM mode et le Scheduler tourne en Superviseur mode
 	// Le processeur doit être en SUPERVISEUR quand vTaskStartScheduler est appelé
   // mais user privileged suffit en fait...	
-	  xTaskCreate(ClignoteurTask, "ClignoteurA", 128, &ParamClignoteurA, 1, NULL);
-    xTaskCreate(ClignoteurTask, "ClignoteurB", 128, &ParamClignoteurB, 1, NULL);
-    xTaskCreate(ClignoteurTask, "ClignoteurC", 128, &ParamClignoteurC, 1, NULL);
+		
+	// xTaskCreate(ClignoteurTask, "ClignoteurA", 128, &ParamClignoteurA, 1, NULL);
+  // xTaskCreate(ClignoteurTask, "ClignoteurB", 128, &ParamClignoteurB, 1, NULL);
+  // xTaskCreate(ClignoteurTask, "ClignoteurC", 128, &ParamClignoteurC, 1, NULL);
 	
 	vTaskStartScheduler();
 
@@ -93,6 +96,9 @@ void init_gpio(void)
  init_GPIOx(GPIOB,11, GPIO_MODE_OUTPUT_PP_50MHz ); // sera espion TASK_IDLE
  init_GPIOx(GPIOB,12, GPIO_MODE_OUTPUT_PP_50MHz ); // sera espion vTaskSwitchContext
  init_GPIOx(GPIOB,13, GPIO_MODE_OUTPUT_PP_50MHz ); // sera espion plantage (pas de chance)
+	
+ init_GPIOx(GPIOC, BP_DEMANDE_TEST_PIN, GPIO_MODE_INPUT_PULL_UP_DOWN); // BP_DEMANDE_TEST
+ init_GPIOx(GPIOC, BP_DEMANDE_APPRO_PIN, GPIO_MODE_INPUT_PULL_UP_DOWN); //BP_DEMANDE_APPRO
 }
 
 static void prvSetupHardware( void )
