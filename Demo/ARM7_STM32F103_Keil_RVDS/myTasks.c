@@ -49,7 +49,7 @@ uint8_t is_button_pressed(uint8_t pin) {
 // ** Configure TIM2 for microsecond timing **
 void TIM2_Config(void) {
     RCC->APB1ENR |= RCC_APB1ENR_TIM2EN; // Enable TIM2 clock
-    TIM2->PSC = 72 - 1;                 // Set prescaler (1 tick = 1�s)
+    TIM2->PSC = 72 - 1;                 // Set prescaler (1 tick = 1µs)
     TIM2->ARR = 0xFFFF;                 // Max ARR value
     TIM2->CR1 |= TIM_CR1_CEN;           // Enable TIM2
 }
@@ -57,9 +57,10 @@ void TIM2_Config(void) {
 // ** Microsecond delay using TIM2 **
 void delay_exact_us(float us) {
     TIM2->CNT = 0;  // Reset counter
-    uint16_t target = (uint16_t)(us * 72.0f); // Convert �s to clock cycles
+    uint16_t target = (uint16_t)(us * 72.0f); // Convert µs to clock cycles
     while (TIM2->CNT < target);
 }
+
 
 // ** Configure PA5 as output for WS2812 control **
 void GPIO_Config(void) {
@@ -67,6 +68,12 @@ void GPIO_Config(void) {
     GPIOA->CRL &= ~(GPIO_CRL_MODE5 | GPIO_CRL_CNF5);
     GPIOA->CRL |= (GPIO_CRL_MODE5_0 | GPIO_CRL_MODE5_1); // Output mode 50MHz
 }
+
+void clear_all_leds(){
+
+}
+
+
 
 // ** Send a WS2812-compatible "1" signal on PA5 **
 void send_one(void) {
@@ -152,18 +159,51 @@ void vTaskModeManagement(void *pvParameters) {
                     }
                 }
 
+								//!!!!!!!!!!!!\ BLOQUANT à CHANGER /!!!!!!!!!!!!\
+								
+                // Clignotement en FreeRTOS : allume et éteint à intervalle régulier
+                for (uint8_t j = 0; j < 5; j++) {  // Fait clignoter 5 fois
+                    etat_reed[casier_a_clignoter] = 1;  // Allume
+                    vTaskDelay(pdMS_TO_TICKS(500));     // Attend 500ms
+                    etat_reed[casier_a_clignoter] = 0;  // Éteint
+                    vTaskDelay(pdMS_TO_TICKS(500));     // Attend 500ms
+												}
+										}
+								} else {
+										// Si la valeur est nulle, éteint toutes les LEDs
+										for (uint8_t i = 0; i < 60; i++) {
+												etat_reed[i] = 0;
+										}
+								}
+							}		
+
                 if ((xTaskGetTickCount() - last_mode_change_time) >= pdMS_TO_TICKS(5000)) {
                     current_mode = MODE_EFFACE;
                 }
+								
+								if (is_button_pressed(BP_DEMANDE_APPRO_PIN)) {
+                    current_mode = MODE_APPRO;
+                    last_mode_change_time = xTaskGetTickCount();
+                }
                 break;
 
-            case MODE_APPRO:
-                for (uint8_t i = 0; i < NUM_LEDS; i++) {
-                    etat_reed[i] = casiers_ouverts[i] ? 1 : 0;
-                }
+            case MODE_APPRO:	
+                //update_appro_mode
+						    for (uint8_t i = 0; i < 60; i++) {
+									if (casiers_ouverts[i]) {
+											etat_reed[i] = 1;  // Casier ferme LED rouge
+									} else {
+											etat_reed[i] = 0;  // Casier ouvert LED verte
+									}
+							}
 
                 if ((xTaskGetTickCount() - last_state_change_time) >= pdMS_TO_TICKS(5000)) {
                     current_mode = MODE_EFFACE;
+                }
+								
+								if (is_button_pressed(BP_DEMANDE_TEST_PIN)) {
+                    current_mode = MODE_TEST;
+                    last_mode_change_time = xTaskGetTickCount();
                 }
                 break;
         }
