@@ -2,109 +2,165 @@
 #include <stdint.h>
 #include <string.h>
 
-/* Scheduler include files. */
+/* FreeRTOS include files */
 #include "FreeRTOS.h"
 #include "task.h"
 
-
-/* le fichier .h du TP  */
+/* Custom header */
 #include "myTasks.h"
 
-// #define ledSTACK_SIZE		128
+#include "stm32f10x.h"  // STM32F103RB library
 
+// ** Pin Definitions **
 #define BP_DEMANDE_TEST_PIN   12
 #define BP_DEMANDE_APPRO_PIN  13
+#define LED_OUTPUT_PIN        5  // PA5 for WS2812 LED control
 
+#define NUM_LEDS              60  // Total LEDs controlled
+
+// ** Modes Enumeration **
 typedef enum {
     MODE_EFFACE,
     MODE_TEST,
     MODE_APPRO
 } Mode_t;
 
-//Var global
-
+// ** Global Variables **
 volatile Mode_t current_mode = MODE_EFFACE;
-volatile int num_case_resistance = 0; // MODE TEST
-volatile uint8_t  mesure_finie = 0; // MODE TEST
+volatile int num_case_resistance = 0;  // MODE_TEST
+volatile uint8_t mesure_finie = 0;     // MODE_TEST
+volatile uint8_t etat_reed[NUM_LEDS] = {0};  
+volatile uint8_t casiers_ouverts[NUM_LEDS] = {0};
 
-volatile uint8_t etat_reed[60] = {0};  
-volatile uint8_t casiers_ouverts[60] = {0};
+// ** Timer Configuration (TIM2 for precise delays) **
+void TIM2_Config(void);
+void GPIO_Config(void);
+void delay_exact_us(float us);
+void send_one(void);
+void send_zero(void);
+void send_pwm(uint8_t tram[NUM_LEDS * 3]);
+void generate_tram(uint8_t mode, uint8_t leds[NUM_LEDS], uint8_t tram[NUM_LEDS * 3]);
 
-// **Lire l'état d'un bouton**
+// ** Read button state **
 uint8_t is_button_pressed(uint8_t pin) {
-    return (GPIOC->IDR & (1 << pin)) == 0;  // Hypothèse : logique inversée (appui = 0)
+    return (GPIOC->IDR & (1 << pin)) == 0;  // Assume active-low buttons
 }
 
-void vTaskModeManagement(void *pvParameters) {
+// ** Configure TIM2 for microsecond timing **
+void TIM2_Config(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN; // Enable TIM2 clock
+    TIM2->PSC = 72 - 1;                 // Set prescaler (1 tick = 1µs)
+    TIM2->ARR = 0xFFFF;                 // Max ARR value
+    TIM2->CR1 |= TIM_CR1_CEN;           // Enable TIM2
+}
 
+// ** Microsecond delay using TIM2 **
+void delay_exact_us(float us) {
+    TIM2->CNT = 0;  // Reset counter
+    uint16_t target = (uint16_t)(us * 72.0f); // Convert µs to clock cycles
+    while (TIM2->CNT < target);
+}
+
+// ** Configure PA5 as output for WS2812 control **
+void GPIO_Config(void) {
+    RCC->APB2ENR |= RCC_APB2ENR_IOPAEN; // Enable GPIOA clock
+    GPIOA->CRL &= ~(GPIO_CRL_MODE5 | GPIO_CRL_CNF5);
+    GPIOA->CRL |= (GPIO_CRL_MODE5_0 | GPIO_CRL_MODE5_1); // Output mode 50MHz
+}
+
+// ** Send a WS2812-compatible "1" signal on PA5 **
+void send_one(void) {
+    GPIOA->BSRR = GPIO_BSRR_BS5; // Set PA5 HIGH
+    delay_exact_us(0.98);
+    GPIOA->BSRR = GPIO_BSRR_BR5; // Set PA5 LOW
+    delay_exact_us(0.42);
+}
+
+// ** Send a WS2812-compatible "0" signal on PA5 **
+void send_zero(void) {
+    GPIOA->BSRR = GPIO_BSRR_BS5; // Set PA5 HIGH
+    delay_exact_us(0.42);
+    GPIOA->BSRR = GPIO_BSRR_BR5; // Set PA5 LOW
+    delay_exact_us(0.98);
+}
+
+// ** Generate LED data for WS2812 **
+void generate_tram(uint8_t mode, uint8_t leds[NUM_LEDS], uint8_t tram[NUM_LEDS * 3]) {
+    for (int i = 0; i < NUM_LEDS; i++) {
+        int led_index = NUM_LEDS - 1 - i; // Reverse order
+        if (mode == MODE_APPRO) {
+            tram[i * 3] = leds[led_index] ? 0x00 : 0xFC;     // Red
+            tram[i * 3 + 1] = leds[led_index] ? 0xFC : 0x00; // Green
+            tram[i * 3 + 2] = 0x00;                          // Blue
+        } else if (mode == MODE_TEST) {
+            tram[i * 3] = 0x00;                              // Red
+            tram[i * 3 + 1] = 0x00;                          // Green
+            tram[i * 3 + 2] = leds[led_index] ? 0xFC : 0x00; // Blue
+        }
+    }
+}
+
+// ** Send WS2812 PWM signal **
+void send_pwm(uint8_t tram[NUM_LEDS * 3]) {
+    for (int i = 0; i < NUM_LEDS * 3; i++) {
+        for (int bit = 7; bit >= 0; bit--) {
+            if (tram[i] & (1 << bit)) {
+                send_one();
+            } else {
+                send_zero();
+            }
+        }
+    }
+}
+
+// ** FreeRTOS Task: Mode Management **
+void vTaskModeManagement(void *pvParameters) {
     TickType_t last_mode_change_time;
     TickType_t last_state_change_time = xTaskGetTickCount();
+    uint8_t tram[NUM_LEDS * 3];
 
     while (1) {
         switch (current_mode) {
-					
             case MODE_EFFACE:
-							
-                //clear_all_leds
-								memset((void *)etat_reed, 0, sizeof(etat_reed));
-						
+                memset((void *)etat_reed, 0, sizeof(etat_reed));
+                
                 if (is_button_pressed(BP_DEMANDE_APPRO_PIN)) {
                     current_mode = MODE_APPRO;
                     last_mode_change_time = xTaskGetTickCount();
-                }
-								else if (is_button_pressed(BP_DEMANDE_TEST_PIN)) {
+                } else if (is_button_pressed(BP_DEMANDE_TEST_PIN)) {
                     current_mode = MODE_TEST;
                     last_mode_change_time = xTaskGetTickCount();
                 }
                 break;
 
-						 case MODE_TEST:
-							 
+            case MODE_TEST:
                 if (mesure_finie) {
-									if (num_case_resistance > 0){
-										for (uint8_t i = 0; i < 60; i++) etat_reed[i] = (i == num_case_resistance) ? 1 : 0; // Seul le bon casier passe à 1, les autres à 0
-									}
-                
-								else if (num_case_resistance < 0) {
-									
-							// Faire clignoter le casier correspondant (valeur absolue)
-							uint8_t casier_a_clignoter = (uint8_t)(-num_case_resistance);
-            
-            // Vérifier si le numéro de casier est valide
-            if (casier_a_clignoter < 60) {
-                for (uint8_t i = 0; i < 60; i++) {
-                    etat_reed[i] = 0; // Éteint tous les casiers
+                    if (num_case_resistance > 0) {
+                        for (uint8_t i = 0; i < NUM_LEDS; i++) etat_reed[i] = (i == num_case_resistance) ? 1 : 0;
+                    } else if (num_case_resistance < 0) {
+                        uint8_t casier_a_clignoter = (uint8_t)(-num_case_resistance);
+                        if (casier_a_clignoter < NUM_LEDS) {
+                            for (uint8_t j = 0; j < 5; j++) {
+                                etat_reed[casier_a_clignoter] = 1;
+                                vTaskDelay(pdMS_TO_TICKS(500));
+                                etat_reed[casier_a_clignoter] = 0;
+                                vTaskDelay(pdMS_TO_TICKS(500));
+                            }
+                        }
+                    } else {
+                        memset((void *)etat_reed, 0, sizeof(etat_reed));
+                    }
                 }
 
-                // Clignotement en FreeRTOS : allume et éteint à intervalle régulier
-                for (uint8_t j = 0; j < 5; j++) {  // Fait clignoter 5 fois
-                    etat_reed[casier_a_clignoter] = 1;  // Allume
-                    vTaskDelay(pdMS_TO_TICKS(500));     // Attend 500ms
-                    etat_reed[casier_a_clignoter] = 0;  // Éteint
-                    vTaskDelay(pdMS_TO_TICKS(500));     // Attend 500ms
-												}
-										}
-								} else {
-										// Si la valeur est nulle, éteint toutes les LEDs
-										for (uint8_t i = 0; i < 60; i++) {
-												etat_reed[i] = 0;
-										}
-								}
-							}		
                 if ((xTaskGetTickCount() - last_mode_change_time) >= pdMS_TO_TICKS(5000)) {
                     current_mode = MODE_EFFACE;
                 }
                 break;
 
             case MODE_APPRO:
-                //update_appro_mode
-						    for (uint8_t i = 0; i < 60; i++) {
-									if (casiers_ouverts[i]) {
-											etat_reed[i] = 1;  // Casier ferme LED rouge
-									} else {
-											etat_reed[i] = 0;  // Casier ouvert LED verte
-									}
-							}
+                for (uint8_t i = 0; i < NUM_LEDS; i++) {
+                    etat_reed[i] = casiers_ouverts[i] ? 1 : 0;
+                }
 
                 if ((xTaskGetTickCount() - last_state_change_time) >= pdMS_TO_TICKS(5000)) {
                     current_mode = MODE_EFFACE;
@@ -112,23 +168,14 @@ void vTaskModeManagement(void *pvParameters) {
                 break;
         }
 
+        generate_tram(current_mode, etat_reed, tram);
+        send_pwm(tram);
+
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
-
-
-/* déclaration des diverses taches avec la fonction prototype */
-//static portTASK_FUNCTION_PROTO( vLed1Task, pvParameters );//exemple de déclaration
-
-/*-------------------variables globales propres aux taches------------*/
-unsigned char argument_tache1 =3;
-
-void vInit_myTasks( UBaseType_t uxPriority )
-{//ici on cree toutes les taches et tous les sémaphores, mutex ....
-//xTaskCreate( vLed1Task, "LED1", ledSTACK_SIZE, &argument_tache1, uxPriority, ( TaskHandle_t * ) NULL );
-
+/* Task Initialization */
+void vInit_myTasks(UBaseType_t uxPriority) {
+    xTaskCreate(vTaskModeManagement, "ModeTask", configMINIMAL_STACK_SIZE, NULL, uxPriority, NULL);
 }
-
-
-
