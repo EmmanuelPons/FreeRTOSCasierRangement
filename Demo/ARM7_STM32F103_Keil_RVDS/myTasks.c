@@ -35,6 +35,10 @@ uint8_t is_button_pressed(uint8_t pin) {
     return (GPIOC->IDR & (1 << pin)) == 0;  // Hypothèse : logique inversée (appui = 0)
 }
 
+void clear_all_leds(){
+
+}
+
 void vTaskModeManagement(void *pvParameters) {
 
     TickType_t last_mode_change_time;
@@ -76,6 +80,9 @@ void vTaskModeManagement(void *pvParameters) {
                     etat_reed[i] = 0; // Éteint tous les casiers
                 }
 
+								
+								//!!!!!!!!!!!!\ BLOQUANT à CHANGER /!!!!!!!!!!!!\
+								
                 // Clignotement en FreeRTOS : allume et éteint à intervalle régulier
                 for (uint8_t j = 0; j < 5; j++) {  // Fait clignoter 5 fois
                     etat_reed[casier_a_clignoter] = 1;  // Allume
@@ -94,9 +101,15 @@ void vTaskModeManagement(void *pvParameters) {
                 if ((xTaskGetTickCount() - last_mode_change_time) >= pdMS_TO_TICKS(5000)) {
                     current_mode = MODE_EFFACE;
                 }
+								
+								if (is_button_pressed(BP_DEMANDE_APPRO_PIN)) {
+                    current_mode = MODE_APPRO;
+                    last_mode_change_time = xTaskGetTickCount();
+                }
                 break;
 
             case MODE_APPRO:
+							
                 //update_appro_mode
 						    for (uint8_t i = 0; i < 60; i++) {
 									if (casiers_ouverts[i]) {
@@ -108,6 +121,11 @@ void vTaskModeManagement(void *pvParameters) {
 
                 if ((xTaskGetTickCount() - last_state_change_time) >= pdMS_TO_TICKS(5000)) {
                     current_mode = MODE_EFFACE;
+                }
+								
+								if (is_button_pressed(BP_DEMANDE_TEST_PIN)) {
+                    current_mode = MODE_TEST;
+                    last_mode_change_time = xTaskGetTickCount();
                 }
                 break;
         }
