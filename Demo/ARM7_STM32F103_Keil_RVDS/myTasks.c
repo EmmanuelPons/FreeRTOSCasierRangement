@@ -29,7 +29,7 @@ typedef enum {
 volatile Mode_t current_mode = MODE_EFFACE;
 volatile int num_case_resistance = 0;  // MODE_TEST
 volatile uint8_t mesure_finie = 0;     // MODE_TEST
-volatile uint8_t etat_reed[NUM_LEDS] = {0};  
+volatile uint8_t etat_led[NUM_LEDS] = {0};  
 volatile uint8_t casiers_ouverts[NUM_LEDS] = {0};
 
 // ** Timer Configuration (TIM2 for precise delays) **
@@ -127,7 +127,7 @@ void vTaskModeManagement(void *pvParameters) {
     while (1) {
         switch (current_mode) {
             case MODE_EFFACE:
-                memset((void *)etat_reed, 0, sizeof(etat_reed));
+                memset((void *)etat_led, 0, sizeof(etat_led));
                 if (is_button_pressed(BP_DEMANDE_APPRO_PIN)) {
                     current_mode = MODE_APPRO;
                     last_mode_change_time = xTaskGetTickCount();
@@ -141,20 +141,20 @@ void vTaskModeManagement(void *pvParameters) {
                 if (mesure_finie) {
                     if (num_case_resistance > 0) {
                         for (i = 0; i < NUM_LEDS; i++) {
-                            etat_reed[i] = (i == num_case_resistance) ? 1 : 0;
+                            etat_led[i] = (i == num_case_resistance) ? 1 : 0;
                         }
                     } else if (num_case_resistance < 0) {
                         uint8_t casier_a_clignoter = (uint8_t)(-num_case_resistance);
                         if (casier_a_clignoter < NUM_LEDS) {
                             for (j = 0; j < 5; j++) {
-                                etat_reed[casier_a_clignoter] = 1;
+                                etat_led[casier_a_clignoter] = 1;
                                 vTaskDelay(pdMS_TO_TICKS(500));
-                                etat_reed[casier_a_clignoter] = 0;
+                                etat_led[casier_a_clignoter] = 0;
                                 vTaskDelay(pdMS_TO_TICKS(500));
                             }
                         }
                     } else {
-                        memset((void *)etat_reed, 0, sizeof(etat_reed));
+                        memset((void *)etat_led, 0, sizeof(etat_led));
                     }
                 }
 
@@ -165,7 +165,7 @@ void vTaskModeManagement(void *pvParameters) {
 
             case MODE_APPRO:
                 for (i = 0; i < NUM_LEDS; i++) {
-                    etat_reed[i] = casiers_ouverts[i] ? 1 : 0;
+                    etat_led[i] = casiers_ouverts[i] ? 1 : 0;
                 }
 
                 if ((xTaskGetTickCount() - last_state_change_time) >= pdMS_TO_TICKS(5000)) {
@@ -174,7 +174,7 @@ void vTaskModeManagement(void *pvParameters) {
                 break;
         }
 
-        generate_tram(current_mode, etat_reed, tram);
+        generate_tram(current_mode, etat_led, tram);
         send_pwm(tram);
         vTaskDelay(pdMS_TO_TICKS(10));
     }
