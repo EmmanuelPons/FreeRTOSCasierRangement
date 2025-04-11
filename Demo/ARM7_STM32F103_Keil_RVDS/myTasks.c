@@ -33,6 +33,13 @@ const uint16_t SEUILS2[] = {
     1214,1065,927,797,681,580,487,406,341,283,
     234
 };
+#define NB_COLONNES 5
+#define PREMIERE_COLONNE_PIN 6  // GPIOA.6
+#define PREMIERE_LIGNE_PIN 1    // GPIOB.1
+
+// Colonnes : GPIOA, pins A6 à A10
+const uint8_t colonnes_pins[NB_COLONNES] = {6, 7, 8, 9, 10};
+
 
 // ** Modes Enumeration **
 typedef enum {
@@ -61,6 +68,55 @@ void generate_tram(uint8_t mode, uint8_t leds[NUM_LEDS], uint8_t tram[NUM_LEDS *
 uint8_t is_button_pressed(uint8_t pin) {
     return (GPIOC->IDR & (1 << pin)) == 0;  // Assume active-low buttons
 }
+
+// ** Set output state **
+void set_gpio_pin_state(GPIO_TypeDef *port, uint8_t pin, uint8_t state) {
+    if (state) {
+        port->BSRR = (1 << pin);    // Set pin high
+    } else {
+        port->BRR  = (1 << pin);    // Set pin low
+    }
+}
+
+// Lit les 5 colonnes pour une ligne GPIOB donnée
+void lire_ligne_reed(uint8_t ligne_pin, uint8_t resultat[NB_COLONNES]) {
+		int i = 0;
+	
+    // 1. Mettre la ligne à LOW pour activer la lecture
+    set_gpio_pin_state(GPIOB, ligne_pin, 0);
+
+    // 2. Lire l’état des colonnes (GPIOA)
+    for (i = 0; i < NB_COLONNES; i++) {
+        uint8_t pin = colonnes_pins[i];
+        // Reed fermé => entrée à 0 => ON
+        resultat[i] = ((GPIOA->IDR & (1 << pin)) == 0) ? 1 : 0;
+    }
+
+    //	 3. Remettre la ligne à HIGH (repos)
+    set_gpio_pin_state(GPIOB, ligne_pin, 1);
+}
+
+void scanner_tous_reed(void){
+	int i = PREMIERE_LIGNE_PIN ;
+	int j = 0;
+	uint8_t resultat[NB_COLONNES];
+	uint8_t pin_ligne = 0;
+	
+	
+	for (i = 0; i < 12 ; i++){
+		
+			pin_ligne = PREMIERE_LIGNE_PIN + i;
+		lire_ligne_reed(pin_ligne, resultat);
+
+		
+		for (j = 0; j < NB_COLONNES; j++){
+			casiers_ouverts[i + j * 12] = resultat[j];
+		}
+				
+	}
+
+}
+
 
 // ** Configure TIM2 for microsecond timing **
 void TIM2_Config(void) {
@@ -215,7 +271,6 @@ void check_seuil(uint16_t x) {
 
     // Still hors casier → do nothing
 }
-
 
 // ** FreeRTOS Task: Mode Management **
 void vTaskModeManagement(void *pvParameters) {
