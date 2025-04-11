@@ -18,6 +18,22 @@
 
 #define NUM_LEDS              60  // Total LEDs controlled
 
+// 30, 31, ..., 59, hors casier
+const uint16_t SEUILS1[] = {
+    3850,3804,3752,3691,3618,3532,3432,3320,3183,3033,
+    2875,2695,2504,2322,2143,1959,1772,1583,1401,1231,
+    1065,913,785,664,559,476,406,345,291,244,
+    203
+};
+
+// hors casier, 0 , 1, ..., 29
+const uint16_t SEUILS2[] = {
+    3898,3859,3810,3752,3686,3605,3511,3414,3307,3185,
+    3048,2893,2723,2545,2346,2141,1946,1741,1542,1369,
+    1214,1065,927,797,681,580,487,406,341,283,
+    234
+};
+
 // ** Modes Enumeration **
 typedef enum {
     MODE_EFFACE,
@@ -102,6 +118,36 @@ void generate_tram(uint8_t mode, uint8_t leds[NUM_LEDS], uint8_t tram[NUM_LEDS *
     }
 }
 
+void ADC1_Init(void) {
+    // Enable GPIOA and ADC1 clocks
+    RCC->APB2ENR |= RCC_APB2ENR_IOPAEN | RCC_APB2ENR_ADC1EN;
+
+    // Set PA0 (ADC1_IN0) to analog mode (CNF=00, MODE=00)
+    GPIOA->CRL &= ~(GPIO_CRL_CNF0 | GPIO_CRL_MODE0);
+
+    // Turn on ADC1
+    ADC1->CR2 |= ADC_CR2_ADON;
+    for (volatile int i = 0; i < 1000; i++); // Short delay
+
+    // Start calibration
+    ADC1->CR2 |= ADC_CR2_CAL;
+    while (ADC1->CR2 & ADC_CR2_CAL);  // Wait for calibration to finish
+}
+
+uint16_t ADC1_Read(void) {
+    // Select channel 0 (PA0)
+    ADC1->SQR3 = 0;
+
+    // Start conversion
+    ADC1->CR2 |= ADC_CR2_ADON;
+
+    // Wait for conversion to complete
+    while (!(ADC1->SR & ADC_SR_EOC));
+
+    // Read 12-bit result
+    return ADC1->DR;
+}
+
 // ** Send WS2812 PWM signal **
 void send_pwm(uint8_t tram[NUM_LEDS * 3]) {
     int i, bit;
@@ -115,6 +161,61 @@ void send_pwm(uint8_t tram[NUM_LEDS * 3]) {
         }
     }
 }
+
+void SwitchCurrentMode(void) {
+    if (is_button_pressed(BP_DEMANDE_APPRO_PIN)) {
+        current_mode = MODE_APPRO;
+    } else if (is_button_pressed(BP_DEMANDE_TEST_PIN)) {
+        current_mode = MODE_TEST;
+    }
+}
+
+void transistor_on(void)
+{
+    set_gpio_pin_state(GPIOB, 13, 1);  // Set PB13 HIGH
+}
+
+void transistor_off(void)
+{
+    set_gpio_pin_state(GPIOB, 13, 0);  // Set PB13 LOW
+}
+
+void check_seuil(uint16_t x) {
+    int i;
+
+    // Check against SEUILS1 (for casiers 30–59)
+    if (x <= SEUILS1[0]) {
+        for (i = 0; i < 30; i++) {
+            if (x <= SEUILS1[i] && x > SEUILS1[i + 1]) {
+                int casier = 30 + i;
+                casiers_ouverts[casier] = 1;
+                return;
+            }
+        }
+
+        // Out of range ("hors casier"), do nothing
+        return;
+    }
+
+    // Value is higher than SEUILS1[0] → transistor + second read
+    transistor_on();
+    uint16_t new_x = ADC1_Read();
+		transistor_off();
+
+    // Check against SEUILS2 (for casiers 0–29)
+    if (new_x >= SEUILS2[30]) {
+        for (i = 0; i < 30; i++) {
+            if (new_x <= SEUILS2[i] && new_x > SEUILS2[i + 1]) {
+                int casier = i;
+                casiers_ouverts[casier] = 1;
+                return;
+            }
+        }
+    }
+
+    // Still hors casier → do nothing
+}
+
 
 // ** FreeRTOS Task: Mode Management **
 void vTaskModeManagement(void *pvParameters) {
