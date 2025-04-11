@@ -175,6 +175,8 @@ void generate_tram(uint8_t mode, uint8_t leds[NUM_LEDS], uint8_t tram[NUM_LEDS *
 }
 
 void ADC1_Init(void) {
+		int i; 
+	
     // Enable GPIOA and ADC1 clocks
     RCC->APB2ENR |= RCC_APB2ENR_IOPAEN | RCC_APB2ENR_ADC1EN;
 
@@ -183,7 +185,8 @@ void ADC1_Init(void) {
 
     // Turn on ADC1
     ADC1->CR2 |= ADC_CR2_ADON;
-    for (volatile int i = 0; i < 1000; i++); // Short delay
+		
+    for (i = 0; i < 1000; i++); // Short delay
 
     // Start calibration
     ADC1->CR2 |= ADC_CR2_CAL;
@@ -238,6 +241,7 @@ void transistor_off(void)
 
 void check_seuil(uint16_t x) {
     int i;
+		uint16_t new_x;
 
     // Check against SEUILS1 (for casiers 30–59)
     if (x <= SEUILS1[0]) {
@@ -255,7 +259,7 @@ void check_seuil(uint16_t x) {
 
     // Value is higher than SEUILS1[0] → transistor + second read
     transistor_on();
-    uint16_t new_x = ADC1_Read();
+    new_x = ADC1_Read();
 		transistor_off();
 
     // Check against SEUILS2 (for casiers 0–29)
