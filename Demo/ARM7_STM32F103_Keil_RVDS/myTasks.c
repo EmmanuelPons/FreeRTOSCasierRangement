@@ -288,35 +288,10 @@ void vTaskModeManagement(void *pvParameters) {
         switch (current_mode) {
             case MODE_EFFACE:
                 memset((void *)etat_led, 0, sizeof(etat_led));
-                if (is_button_pressed(BP_DEMANDE_APPRO_PIN)) {
-                    current_mode = MODE_APPRO;
-                    last_mode_change_time = xTaskGetTickCount();
-                } else if (is_button_pressed(BP_DEMANDE_TEST_PIN)) {
-                    current_mode = MODE_TEST;
-                    last_mode_change_time = xTaskGetTickCount();
-                }
                 break;
 
             case MODE_TEST:
-                if (mesure_finie) {
-                    if (num_case_resistance > 0) {
-                        for (i = 0; i < NUM_LEDS; i++) {
-                            etat_led[i] = (i == num_case_resistance) ? 1 : 0;
-                        }
-                    } else if (num_case_resistance < 0) {
-                        uint8_t casier_a_clignoter = (uint8_t)(-num_case_resistance);
-                        if (casier_a_clignoter < NUM_LEDS) {
-                            for (j = 0; j < 5; j++) {
-                                etat_led[casier_a_clignoter] = 1;
-                                vTaskDelay(pdMS_TO_TICKS(500));
-                                etat_led[casier_a_clignoter] = 0;
-                                vTaskDelay(pdMS_TO_TICKS(500));
-                            }
-                        }
-                    } else {
-                        memset((void *)etat_led, 0, sizeof(etat_led));
-                    }
-                }
+								// notification to check_seuil
 
                 if ((xTaskGetTickCount() - last_mode_change_time) >= pdMS_TO_TICKS(5000)) {
                     current_mode = MODE_EFFACE;
@@ -324,6 +299,7 @@ void vTaskModeManagement(void *pvParameters) {
                 break;
 
             case MODE_APPRO:
+								// notification to scanner_tous_reed
                 for (i = 0; i < NUM_LEDS; i++) {
                     etat_led[i] = casiers_ouverts[i] ? 1 : 0;
                 }
