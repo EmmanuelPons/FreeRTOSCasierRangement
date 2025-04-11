@@ -18,6 +18,16 @@
 
 #define NUM_LEDS              60  // Total LEDs controlled
 
+#define TAILLE_FIFO 32
+
+uint8_t fifo_env[TAILLE_FIFO];
+uint8_t pw_fifo = 0;
+uint8_t pr_fifo = 0;
+uint16_t place_libre = TAILLE_FIFO;
+
+
+#define BIT_INDIQUANT_ENVOI_POSSIBLE (1 << 7)
+
 // 30, 31, ..., 59, hors casier
 const uint16_t SEUILS1[] = {
     3850,3804,3752,3691,3618,3532,3432,3320,3183,3033,
@@ -228,7 +238,7 @@ void check_seuil(uint16_t x) {
     }
     // x exceeds highest threshold → use transistor action and re-read ADC
     transistor_on();
-    new_x = 2000; //ADC1_Read();
+    new_x = ADC1_Read();
     transistor_off();
     // Check against SEUILS2 (mapped to casiers 0–29)
     if (new_x >= SEUILS2[30]) {
@@ -241,6 +251,40 @@ void check_seuil(uint16_t x) {
         }
     }
 }
+
+//////////////////////////////////////////////////
+void tentative_depile_fifo(void) {
+    if ((USART2->SR & (BIT_INDIQUANT_ENVOI_POSSIBLE))) {
+        place_libre++;
+        USART2->DR = fifo_env[pr_fifo++];
+        if (pr_fifo == TAILLE_FIFO) {
+            pr_fifo = 0;
+        }
+    }
+}
+
+
+void vUartTask(void *pvParameters) {
+    while (1) {
+        // Process FIFO
+        while (place_libre < TAILLE_FIFO) {
+            tentative_depile_fifo();
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+void fabrique_trame(int x) {
+    int i;
+
+    // Generate hex representation of the identifier (all 8 bytes)
+    fifo_env[pw_fifo++] = x;
+
+    place_libre -= 4;
+}
+
+//////////////////////////////////////////////////
+
 
 // ---------------------------
 // FreeRTOS Task Definitions
@@ -314,7 +358,15 @@ void vTaskCheckSeuil(void *pvParameters) {
             check_seuil(adc_val);
             // Optionally update etat_led based on casiers_ouverts
             for (i = 0; i < NUM_LEDS; i++) {
-                etat_led[i] = casiers_ouverts[i] ? 1 : 0;
+							if ( casiers_ouverts[i] == 1) {
+								etat_led[i] = 1;
+								fabrique_trame(i);
+								
+							} else {
+								etat_led[i] = 0;
+							}
+                //etat_led[i] = casiers_ouverts[i] ? 1 : 0;
+								
             }
         }
     }
@@ -329,6 +381,8 @@ void vTaskScannerReed(void *pvParameters) {
     }
 }
 
+
+
 // ---------------------------
 // Task Initialization Function
 // ---------------------------
@@ -336,4 +390,8 @@ void vInit_myTasks(UBaseType_t uxPriority) {
     xTaskCreate(vTaskModeManagement, "ModeTask", configMINIMAL_STACK_SIZE, NULL, uxPriority, NULL);
     xTaskCreate(vTaskCheckSeuil, "CheckSeuil", 128, NULL, uxPriority, &xHandleCheckSeuil);
     xTaskCreate(vTaskScannerReed, "ScannerReed", 128, NULL, uxPriority, &xHandleScannerReed);
+		xTaskCreate(vUartTask, "UartTask", configMINIMAL_STACK_SIZE*2, NULL, tskIDLE_PRIORITY+1,NULL);
 }
+
+
+

@@ -104,6 +104,18 @@ void init_gpio(void)
     // init_GPIOx(GPIOC, 11, GPIO_MODE_OUTPUT_PP_50MHz);
 }
 
+// USART2 initialization
+void init_USART2(void) {
+    RCC->APB1ENR |= (1 << 17);
+    init_GPIOx(GPIOA, 2, 0x09); //TODO change UART pins
+    init_GPIOx(GPIOA, 3, 0x08); //TODO change UART pins
+
+    USART2->BRR = 36000000 / 9600;
+    USART2->CR1 = USART_CR1_TE | USART_CR1_RE | USART_CR1_UE;
+    USART2->CR2 = 0x0000;
+    USART2->CR3 = 0x0000;
+}
+
 static void prvSetupHardware(void)
 {
     init_gpio();
