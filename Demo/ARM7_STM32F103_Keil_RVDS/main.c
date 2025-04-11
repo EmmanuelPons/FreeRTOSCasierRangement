@@ -1,107 +1,111 @@
-
 /* Standard includes. */
 #include <stdlib.h>
 #include "stm32f10x.h"
 #include "FreeRTOS.h"
 #include "task.h"
-// pour initialisation facile des PATTES du proc
 #include "def_type_gpio.h"
-#include "myTasks.h"
+#include "myTasks.h"  // Declares vInit_myTasks()
 
-/* Priorities for the demo application tasks. */
-#define mainLED_TASK_PRIORITY		( tskIDLE_PRIORITY + 2 )
+/* Priorities for the tasks. */
+#define mainLED_TASK_PRIORITY      ( tskIDLE_PRIORITY + 2 )
 
+// Button definitions
 #define BP_DEMANDE_TEST_PIN   12
 #define BP_DEMANDE_APPRO_PIN  13
 
-typedef struct {
-    GPIO_TypeDef *GPIOx;  
-    uint8_t num_bit;      
-    uint32_t duree_on;    
-    uint32_t duree_off;   
-} PARAM_CLIGNOTEUR;
+// Global parameter instances for Clignoteur tasks (optional, uncomment if used)
+// PARAM_CLIGNOTEUR ParamClignoteurA = {GPIOC, 9, 5, 4};
+// PARAM_CLIGNOTEUR ParamClignoteurB = {GPIOC, 10, 3, 2};
+// PARAM_CLIGNOTEUR ParamClignoteurC = {GPIOC, 11, 1, 2};
 
- // Configuration minimal du processeur pour avoir les 8 Leds du Port2 disponible
- 
-PARAM_CLIGNOTEUR ParamClignoteurA = {GPIOC, 9, 5, 4};
-PARAM_CLIGNOTEUR ParamClignoteurB = {GPIOC, 10, 3, 2};
-PARAM_CLIGNOTEUR ParamClignoteurC = {GPIOC, 11, 1, 2};
+static void prvSetupHardware(void);
+void init_gpio(void);
 
-void ClignoteurTask(void *param) {
-	
-    PARAM_CLIGNOTEUR *pClignoteur = (PARAM_CLIGNOTEUR *)param;
-
-
-    init_GPIOx(pClignoteur->GPIOx, pClignoteur->num_bit, GPIO_MODE_OUTPUT_PP_50MHz);
-
-    while (1) {
-        // Allumer la LED
-        pClignoteur->GPIOx->BSRR = (1 << pClignoteur->num_bit);
-        vTaskDelay(pdMS_TO_TICKS(pClignoteur->duree_on));
-
-        // Éteindre la LED
-        pClignoteur->GPIOx->BSRR = (1 << (pClignoteur->num_bit + 16));
-        vTaskDelay(pdMS_TO_TICKS(pClignoteur->duree_off));
-    }
-}
- 
-static void prvSetupHardware( void );
-
-/*-----------------------------------------------------------*/
-void gestion_abort(void)
+int main(void)
 {
+    static uint32_t oscille_plantage = 1 << 13; // Avoid main stack issues (use static)
+    
+    // Minimal hardware initialization
+    prvSetupHardware();
 
-}
+    // Initialize all tasks (this now creates:
+    //    - the Mode Management task (vTaskModeManagement),
+    //    - the ADC check_seuil task (vTaskCheckSeuil),
+    //    - the reed scanning task (vTaskScannerReed))
+    vInit_myTasks(mainLED_TASK_PRIORITY);
 
+    // Uncomment these if you want to run the Clignoteur tasks concurrently
+    // xTaskCreate(ClignoteurTask, "ClignoteurA", 128, &ParamClignoteurA, 1, NULL);
+    // xTaskCreate(ClignoteurTask, "ClignoteurB", 128, &ParamClignoteurB, 1, NULL);
+    // xTaskCreate(ClignoteurTask, "ClignoteurC", 128, &ParamClignoteurC, 1, NULL);
 
-/*
- * Application entry point:
- * Starts all the other tasks, then starts the scheduler. 
- */
-int main( void )
-	{ static uint32_t oscille_plantage = 1<<13; // la pile du main est massacrée par l'OS, on ne peut pas laisser la variable sur la pile, d où le static
- // Configuration minimal du processeur pour avoir les 8 Leds du Port2 disponible
-	prvSetupHardware();
+    // Start the FreeRTOS scheduler
+    vTaskStartScheduler();
 
-	/* initialisation des taches */
-	vInit_myTasks( mainLED_TASK_PRIORITY );
-
-	// toutes les taches ont été démarrées - Demarrer le scheduler.
-  // Les taches tournent en USER/SYSTEM mode et le Scheduler tourne en Superviseur mode
-	// Le processeur doit être en SUPERVISEUR quand vTaskStartScheduler est appelé
-  // mais user privileged suffit en fait...	
-		
-	// xTaskCreate(ClignoteurTask, "ClignoteurA", 128, &ParamClignoteurA, 1, NULL);
-  // xTaskCreate(ClignoteurTask, "ClignoteurB", 128, &ParamClignoteurB, 1, NULL);
-  // xTaskCreate(ClignoteurTask, "ClignoteurC", 128, &ParamClignoteurC, 1, NULL);
-	
-	vTaskStartScheduler();
-
-	/* Should never reach here!  If you do then there was not enough heap
-	available for the idle task to be created. */
-
-	for( ;; )
-	{
-		 GPIOB->BSRR = oscille_plantage;oscille_plantage ^= 0x00010001<<13;
-	}
+    // Should never reach here; in case of failure, blink PB13 as error indication.
+    for (;;) {
+         GPIOB->BSRR = oscille_plantage;
+         oscille_plantage ^= (1 << 13);
+    }
 }
 
 void init_gpio(void)
-{//sera clignoteur 2
- init_GPIOx(GPIOA,4, GPIO_MODE_OUTPUT_PP_50MHz );  // sera clignoteur 1
- init_GPIOx(GPIOA,5, GPIO_MODE_OUTPUT_PP_50MHz );  // sera clignoteur 2
- init_GPIOx(GPIOA,6, GPIO_MODE_OUTPUT_PP_50MHz );  // sera clignoteur 3
- init_GPIOx(GPIOA,7, GPIO_MODE_OUTPUT_PP_50MHz );  // sera clignoteur 4
- init_GPIOx(GPIOB,10, GPIO_MODE_OUTPUT_PP_50MHz ); // sera espion IT_TICKS
- init_GPIOx(GPIOB,11, GPIO_MODE_OUTPUT_PP_50MHz ); // sera espion TASK_IDLE
- init_GPIOx(GPIOB,12, GPIO_MODE_OUTPUT_PP_50MHz ); // sera espion vTaskSwitchContext
- init_GPIOx(GPIOB,13, GPIO_MODE_OUTPUT_PP_50MHz ); // sera espion plantage (pas de chance)
-	
- init_GPIOx(GPIOC, BP_DEMANDE_TEST_PIN, GPIO_MODE_INPUT_PULL_UP_DOWN); // BP_DEMANDE_TEST
- init_GPIOx(GPIOC, BP_DEMANDE_APPRO_PIN, GPIO_MODE_INPUT_PULL_UP_DOWN); //BP_DEMANDE_APPRO
+{
+		int pin;
+    /*
+     * We must initialize all pins that are used in the application.
+     * 
+     * The following pins are used:
+     * 
+     * 1. GPIOA:
+     *    - PA0 is used by the ADC (configured in ADC1_Init).
+     *    - PA5 is used as the output for the WS2812 LED control.
+     *    - PA6, PA7, PA8, PA9, PA10 are used as reed “column” inputs.
+     *      They must be configured as inputs with pull-up/pull-down.
+     *
+     * 2. GPIOB:
+     *    - Reed “row” lines: defined by PREMIERE_LIGNE_PIN and used for scanning;
+     *      here, we need to initialize PB1 to PB12 as outputs.
+     *    - PB13 is used for transistor control and error blinking.
+     *
+     * 3. GPIOC:
+     *    - PC12 and PC13 (pins 12 and 13 per our definitions) are used for buttons.
+     *
+     * Other pins (like those used by Clignoteur tasks on GPIOC) are commented.
+     */
+
+    // ---- GPIOA Initialization ----
+    // PA5: WS2812 LED output.
+    init_GPIOx(GPIOA, 5, GPIO_MODE_OUTPUT_PP_50MHz);
+
+    // PA6 to PA10: Reed column inputs.
+    init_GPIOx(GPIOA, 6, GPIO_MODE_INPUT_PULL_UP_DOWN);
+    init_GPIOx(GPIOA, 7, GPIO_MODE_INPUT_PULL_UP_DOWN);
+    init_GPIOx(GPIOA, 8, GPIO_MODE_INPUT_PULL_UP_DOWN);
+    init_GPIOx(GPIOA, 9, GPIO_MODE_INPUT_PULL_UP_DOWN);
+    init_GPIOx(GPIOA, 10, GPIO_MODE_INPUT_PULL_UP_DOWN);
+
+    // ---- GPIOB Initialization ----
+    // Reed row outputs: initialize PB1 to PB12 as outputs.
+    for (pin = 1; pin <= 12; pin++) {
+        init_GPIOx(GPIOB, pin, GPIO_MODE_OUTPUT_PP_50MHz);
+    }
+    // PB13: Transistor control and error indicator.
+    init_GPIOx(GPIOB, 13, GPIO_MODE_OUTPUT_PP_50MHz);
+
+    // ---- GPIOC Initialization ----
+    // Buttons on PC12 and PC13.
+    init_GPIOx(GPIOC, BP_DEMANDE_TEST_PIN, GPIO_MODE_INPUT_PULL_UP_DOWN);
+    init_GPIOx(GPIOC, BP_DEMANDE_APPRO_PIN, GPIO_MODE_INPUT_PULL_UP_DOWN);
+
+    // (Optional) Clignoteur outputs on GPIOC if used:
+    // init_GPIOx(GPIOC, 9, GPIO_MODE_OUTPUT_PP_50MHz);
+    // init_GPIOx(GPIOC, 10, GPIO_MODE_OUTPUT_PP_50MHz);
+    // init_GPIOx(GPIOC, 11, GPIO_MODE_OUTPUT_PP_50MHz);
 }
 
-static void prvSetupHardware( void )
+static void prvSetupHardware(void)
 {
-init_gpio();	
+    init_gpio();
+    // Additional hardware initialization (e.g., clocks, timers) can be added here.
 }
