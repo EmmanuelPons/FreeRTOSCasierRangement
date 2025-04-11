@@ -81,9 +81,9 @@ void set_gpio_pin_state(GPIO_TypeDef *port, uint8_t pin, uint8_t state) {
 // SwitchCurrentMode: Reads buttons and updates current_mode.
 // ---------------------------
 void SwitchCurrentMode(void) {
-    if (is_button_pressed(BP_DEMANDE_APPRO_PIN))
+    if (0)//(is_button_pressed(BP_DEMANDE_APPRO_PIN))
         current_mode = MODE_APPRO;
-    else if (is_button_pressed(BP_DEMANDE_TEST_PIN))
+    else //if (is_button_pressed(BP_DEMANDE_TEST_PIN))
         current_mode = MODE_TEST;
 }
 
@@ -228,7 +228,7 @@ void check_seuil(uint16_t x) {
     }
     // x exceeds highest threshold → use transistor action and re-read ADC
     transistor_on();
-    new_x = ADC1_Read();
+    new_x = 2000; //ADC1_Read();
     transistor_off();
     // Check against SEUILS2 (mapped to casiers 0–29)
     if (new_x >= SEUILS2[30]) {
@@ -310,7 +310,7 @@ void vTaskCheckSeuil(void *pvParameters) {
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         {
-            uint16_t adc_val = ADC1_Read();
+            uint16_t adc_val = 4000; //ADC1_Read();
             check_seuil(adc_val);
             // Optionally update etat_led based on casiers_ouverts
             for (i = 0; i < NUM_LEDS; i++) {

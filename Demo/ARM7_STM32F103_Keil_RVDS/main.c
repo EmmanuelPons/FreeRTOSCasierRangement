@@ -107,5 +107,6 @@ void init_gpio(void)
 static void prvSetupHardware(void)
 {
     init_gpio();
+		TIM2_Config();
     // Additional hardware initialization (e.g., clocks, timers) can be added here.
 }
