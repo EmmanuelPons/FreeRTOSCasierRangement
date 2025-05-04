@@ -81,7 +81,7 @@ void set_gpio_pin_state(GPIO_TypeDef *port, uint8_t pin, uint8_t state) {
 // SwitchCurrentMode: Reads buttons and updates current_mode.
 // ---------------------------
 void SwitchCurrentMode(void) {
-    if (0)//(is_button_pressed(BP_DEMANDE_APPRO_PIN))
+    if (1)//(is_button_pressed(BP_DEMANDE_APPRO_PIN))
         current_mode = MODE_APPRO;
     else //if (is_button_pressed(BP_DEMANDE_TEST_PIN))
         current_mode = MODE_TEST;
@@ -92,11 +92,20 @@ void lire_ligne_reed(uint8_t ligne_pin, uint8_t resultat[NB_COLONNES]) {
     int i;
     // Activate the row by setting it LOW.
     set_gpio_pin_state(GPIOB, ligne_pin, 0);
+	
+
+	
     for (i = 0; i < NB_COLONNES; i++) {
         uint8_t pin = colonnes_pins[i];
         // When a reed is closed, the corresponding column reads 0.
-        resultat[i] = ((GPIOA->IDR & (1 << pin)) == 0) ? 1 : 0;
+			if (i == 2) resultat[i] = ((GPIOA->IDR & (1 << pin)) == 1) ? 1 : 0; // DEBUG ONLY
+			
+			else        resultat[i] = ((GPIOA->IDR & (1 << pin)) == 0) ? 1 : 0;
+			
+			
+			
     }
+		
     // Deactivate the row (set HIGH).
     set_gpio_pin_state(GPIOB, ligne_pin, 1);
 }
@@ -281,8 +290,8 @@ void vTaskModeManagement(void *pvParameters) {
 
             case MODE_APPRO:
                 // Notify the reed scanner task
-                if (xHandleScannerReed != NULL)
-                    xTaskNotifyGive(xHandleScannerReed);
+               // if (xHandleScannerReed != NULL)
+                 //   xTaskNotifyGive(xHandleScannerReed);
 
                 // Update etat_led based on casiers_ouverts (for WS2812 output)
                 for (i = 0; i < NUM_LEDS; i++) {
@@ -324,7 +333,7 @@ void vTaskCheckSeuil(void *pvParameters) {
 // Waits for notification then scans all reed switches.
 void vTaskScannerReed(void *pvParameters) {
     for (;;) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+     //   ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         scanner_tous_reed();
     }
 }
@@ -335,5 +344,5 @@ void vTaskScannerReed(void *pvParameters) {
 void vInit_myTasks(UBaseType_t uxPriority) {
     xTaskCreate(vTaskModeManagement, "ModeTask", configMINIMAL_STACK_SIZE, NULL, uxPriority, NULL);
     xTaskCreate(vTaskCheckSeuil, "CheckSeuil", 128, NULL, uxPriority, &xHandleCheckSeuil);
-    xTaskCreate(vTaskScannerReed, "ScannerReed", 128, NULL, uxPriority, &xHandleScannerReed);
+    xTaskCreate(vTaskScannerReed, "ScannerReed", 128, NULL, uxPriority, NULL);
 }

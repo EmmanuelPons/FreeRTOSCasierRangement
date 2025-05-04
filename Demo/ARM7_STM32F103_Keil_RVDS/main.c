@@ -79,11 +79,13 @@ void init_gpio(void)
     init_GPIOx(GPIOA, 5, GPIO_MODE_OUTPUT_PP_50MHz);
 
     // PA6 to PA10: Reed column inputs.
+		
     init_GPIOx(GPIOA, 6, GPIO_MODE_INPUT_PULL_UP_DOWN);
     init_GPIOx(GPIOA, 7, GPIO_MODE_INPUT_PULL_UP_DOWN);
     init_GPIOx(GPIOA, 8, GPIO_MODE_INPUT_PULL_UP_DOWN);
     init_GPIOx(GPIOA, 9, GPIO_MODE_INPUT_PULL_UP_DOWN);
-    init_GPIOx(GPIOA, 10, GPIO_MODE_INPUT_PULL_UP_DOWN);
+    init_GPIOx(GPIOA, 10, GPIO_MODE_INPUT_PULL_UP_DOWN); 
+		
 
     // ---- GPIOB Initialization ----
     // Reed row outputs: initialize PB1 to PB12 as outputs.
